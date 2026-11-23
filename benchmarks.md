@@ -15,13 +15,13 @@ of a single tube clamped at one end.
 
 ### Team hand calculation
 1. Tube second moment of area:
-   I = (π/64) × (Do^4 − Di^4) = ______ m^4
+   I = (π/64) × (Do^4 − Di^4) = 0.00000000464 m^4
 
 2. Downward tip deflection:
-   δ = P × L^3 / (3 × E × I) = ______ m
+   δ = P × L^3 / (3 × E × I) = 0.007189 m
 
 3. Convert to millimeters:
-   δ × 1000 = ______ mm downward
+   δ × 1000 = 7.18857 mm downward
 
 ### Solver comparison — fill in after running the code
 - Solver tip deflection magnitude: ______ mm
