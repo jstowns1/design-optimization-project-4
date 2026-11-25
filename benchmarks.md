@@ -24,5 +24,5 @@ of a single tube clamped at one end.
    δ × 1000 = 7.18857 mm downward
 
 ### Solver comparison — fill in after running the code
-- Solver tip deflection magnitude: ______ mm
-- Percent error: |solver − hand calculation| / hand calculation × 100 = ______ %
+- Solver tip deflection magnitude: 7.18857015 mm
+- Percent error: |solver − hand calculation| / hand calculation × 100 = 0.00000207 %
