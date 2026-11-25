@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 import numpy as np
+from scipy.sparse import coo_matrix
 
 from frame3d import AREA, DENSITY, GRAVITY, INERTIA, REFERENCE_RADIUS, Frame, apply, transpose
 
@@ -40,6 +41,32 @@ def modal_vectors(frame, vectors):
 
 def mode_energy(vectors, matrices):
     return np.einsum('eik,eij,ejk->ek', vectors, matrices, vectors, optimize=True)
+
+
+def deck_control_map(nodes, edges):
+    """Map nodal DOFs to cubic Bézier controls for vertical deck deflection."""
+    # The vertical Hermite slope times length is (theta × end-to-end vector).z.
+    offset = nodes[edges[:, 1]] - nodes[edges[:, 0]]
+    indices = 6 * edges[:, [0, 0, 1, 1], None] + np.array([2, 3, 4])
+    coefficients = np.zeros(indices.shape)
+    coefficients[:, :, 0] = 1
+    coefficients[:, 1, 1:] = offset[:, [1, 0]] * [1 / 3, -1 / 3]
+    coefficients[:, 2, 1:] = -coefficients[:, 1, 1:]
+    rows = np.repeat(np.arange(4 * len(edges)), 3)
+    return coo_matrix((coefficients.ravel(), (rows, indices.ravel())),
+                      shape=(4 * len(edges), 6 * len(nodes))).tocsr()
+
+
+def peak_deck_deflection(controls):
+    """Return the largest absolute value on the recovered cubic deck curves."""
+    peak = np.abs(controls[:, [0, 3]]).max()
+    for a, b, c, d in controls:
+        polynomial = [a, 3 * (b - a), 3 * (a - 2 * b + c), -a + 3 * b - 3 * c + d]
+        derivative = np.polynomial.polynomial.polyder(polynomial)
+        for root in np.polynomial.polynomial.polyroots(derivative):
+            if np.isreal(root) and 0 < root.real < 1:
+                peak = max(peak, abs(np.polynomial.polynomial.polyval(root.real, polynomial)))
+    return peak
 
 
 @dataclass
@@ -128,7 +155,6 @@ class Bridge:
 
         self.base = np.asarray(base, dtype=float)
         self.motion = np.asarray(motion, dtype=float)
-        self.deck_dofs = 6 * np.asarray(sorted(deck_nodes)) + 2
         self.bounds = [(0.010 / REFERENCE_RADIUS, 0.150 / REFERENCE_RADIUS)] * self.count
         # Shape variables are metres, with a nonnegative rise above the portal height.
         self.bounds += [(2.45, 3.4), (0.0, 0.65)]
@@ -152,6 +178,9 @@ class Bridge:
         line_loads[:, 2] = -DECK_PRESSURE * widths
         self.frame = Frame(initial_nodes, edges, left + right, line_loads=line_loads,
                            nodal_mass=nodal_mass, gravity=GRAVITY)
+        # Only the top-chord coordinates depend on the shape design.
+        deck_edges = np.isin(np.asarray(labels)[self.owner], ('Bottom chord', 'Stringer', 'Floor beam'))
+        self.deck_controls = deck_control_map(initial_nodes, edges[deck_edges])
 
     def coordinates(self, shape):
         nodes = self.base.astype(np.result_type(shape, float), copy=True)
@@ -192,7 +221,9 @@ class Bridge:
             constraints.append(value - 1)
             stress_weights.append(weights / limit)
 
-        deck = state.displacement[self.deck_dofs] / DEFLECTION_LIMIT
+        deck_controls = self.deck_controls @ state.displacement
+        deck = deck_controls / DEFLECTION_LIMIT
+        # The curve is inside the convex hull of its controls, including between nodes.
         value, weights = ks(np.r_[deck, -deck], 120)
         constraints.append(value - 1)
         up, down = np.split(weights, 2)
@@ -213,7 +244,7 @@ class Bridge:
         metrics = {
             'mass_kg': float(mass), 'stress_mpa': float(peak / 1e6),
             'goodman': float(2 * FATIGUE_LIMIT / peak),
-            'deflection_mm': float(np.max(np.abs(deck)) * DEFLECTION_LIMIT * 1000),
+            'deflection_mm': 1000 * float(peak_deck_deflection(deck_controls.reshape(-1, 4))),
             'frequency_hz': float(frequencies.min()), 'buckling_factor': float(1 / inv_buckling.max()),
             'slenderness': float(slenderness.max()),
         }
@@ -250,7 +281,7 @@ class Bridge:
             frame.vector(apply(transpose(state.action_operator), action_gradient[:, :, index]))
             for index in range(5)
         ])
-        displacement_gradient[self.deck_dofs, 2] += deck_gradient
+        displacement_gradient[:, 2] = self.deck_controls.T @ deck_gradient
         adjoint = frame.expand(state.factor.solve(-displacement_gradient[frame.free], trans='T'))
         local_adjoint = adjoint[frame.dofs]
         u = state.displacement[frame.dofs]

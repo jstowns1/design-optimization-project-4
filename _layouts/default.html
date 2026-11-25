@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Finite-element verification, adjoint sensitivity analysis, and mass optimization of a 15 m steel Pratt footbridge.">
   <title>{{ page.title | default: site.title }}</title>
   <link rel="stylesheet" href="assets/report.css">
   <script>window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] } };</script>
@@ -13,7 +14,22 @@
   <script type="module" src="assets/report.js"></script>
 </head>
 <body>
-  <header class="topbar"><a href="./">Project 4</a><nav aria-label="Report sections"><a href="#formulation">Formulation</a><a href="#verification">Verification</a><a href="#nonlinear-component-and-results">Results</a></nav></header>
-  <main>{{ content }}</main>
+  <a class="skip-link" href="#main">Skip to report</a>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="course" href="./">Design Optimization <span>Project 4</span></a>
+      <nav aria-label="Quick links">
+        <a href="#comparison">3D comparison</a>
+        <a href="#verification">Verification</a>
+        <a href="#nonlinear-component-and-results">Results</a>
+        <a class="source-link" href="https://github.com/jstowns1/design-optimization-project-4">Source code</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main" tabindex="-1">{{ content }}</main>
+  <footer class="site-footer">
+    <span>MAE 494/598 · PDE-Constrained Design Optimization</span>
+    <a href="https://github.com/jstowns1/design-optimization-project-4#run-on-windows">Reproduce this study</a>
+  </footer>
 </body>
 </html>

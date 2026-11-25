@@ -2,6 +2,8 @@
 
 The solver sizes circular hollow sections and adjusts the top-chord profile of a 15 m Pratt through-truss. It runs the V1–V6 verification ladder before optimizing a design with and without the N1 buckling constraint. The original V1 hand calculation is in [benchmarks.md](benchmarks.md).
 
+[Live technical report and interactive bridge comparison](https://jstowns1.github.io/design-optimization-project-4/)
+
 ## Run on Windows
 
 In the VS Code PowerShell terminal, open the repository folder. Use Python 3.10 or newer. Create the environment and install the two dependencies once.
@@ -31,4 +33,4 @@ The standalone V1 check uses the Python standard library.
 
 ## Serve the report
 
-The GitHub Pages source is the repository root on the main branch. Jekyll processes [index.md](index.md), and the browser reads [assets/results.json](assets/results.json) for the tables, plots, and 3D comparison. The viewer uses WebGL and loads the pinned Three.js module over HTTPS.
+The GitHub Pages source is the repository root on the main branch. Jekyll processes [index.md](index.md), and the browser reads [assets/results.json](assets/results.json) for the tables, plots, frame and deck drawings, and 3D comparison. The viewer uses WebGL and loads the pinned Three.js module over HTTPS.

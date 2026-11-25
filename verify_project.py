@@ -5,7 +5,8 @@ from time import perf_counter
 import numpy as np
 from scipy.sparse.linalg import eigsh
 
-from bridge import DECK_MASS, DECK_PRESSURE, RESPONSES, SPAN, WIDTH
+from bridge import (DECK_MASS, DECK_PRESSURE, RESPONSES, SPAN, WIDTH,
+                    deck_control_map, peak_deck_deflection)
 from frame3d import AREA, DENSITY, E, G, GRAVITY, INERTIA, Frame
 from verify_v1 import solve_cantilever
 
@@ -70,6 +71,12 @@ def verify_structure(bridge):
     _, _, _, state = beam(length, count, axis, line_load=direction * uniform, fixed=fixed)
     record('V2', 'Rotated midspan displacement projected onto the load', 'mm',
            1000 * np.dot(state.displacement.reshape(-1, 6)[count // 2, :3], direction), exact_mm)
+    single, _, _, state = beam(length, 1, line_load=[0, 0, -uniform])
+    controls = deck_control_map(single.nodes, single.edges) @ state.displacement
+    # The one-element Hermite solution has zero endpoint displacement and a quadratic arc.
+    record('V2', 'Single-element Hermite peak between deck nodes', 'mm',
+           1000 * peak_deck_deflection(controls.reshape(-1, 4)),
+           1000 * uniform * length**4 / (96 * E * INERTIA))
 
     frequency = np.pi / (2 * length**2) * np.sqrt(E * INERTIA / (DENSITY * AREA))
     euler = np.pi**2 * E * INERTIA / length**2

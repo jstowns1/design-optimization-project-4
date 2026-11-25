@@ -1,3 +1,5 @@
+import { drawResponsive, renderEngineeringFigures } from './figures.js';
+
 const labels = [
   ['mass_kg', 'Mass', 'kg', 0, null],
   ['stress_mpa', 'R1 · Peak tube stress', 'MPa', 2, 'max'],
@@ -16,6 +18,45 @@ const withUnit = (value, digits, unit) => number(value, digits) + (unit ? ' ' + 
 const scientific = value => value === 0 ? '0' : value.toExponential(2);
 const significant = value => Number(value.toPrecision(9)).toLocaleString('en-US', { maximumFractionDigits: 10 });
 
+function organizeReport() {
+  const main = id('main');
+  const headings = [...main.querySelectorAll(':scope > h2')];
+  const shell = document.createElement('div');
+  shell.className = 'report-shell';
+  const navigation = document.createElement('nav');
+  navigation.className = 'report-index';
+  navigation.setAttribute('aria-label', 'Report contents');
+  const title = document.createElement('p');
+  title.textContent = 'Contents';
+  const links = document.createElement('ul');
+  navigation.append(title, links);
+  const body = document.createElement('div');
+  body.className = 'report-body';
+  shell.append(navigation, body);
+  main.insertBefore(shell, headings[0]);
+
+  headings.forEach((heading, index) => {
+    if (!heading.id) heading.id = heading.textContent.trim().toLowerCase().replaceAll(/[^a-z0-9]+/g, '-');
+    const section = document.createElement('section');
+    section.className = 'report-section';
+    section.setAttribute('aria-labelledby', heading.id);
+    const nextHeading = headings[index + 1];
+    let node = heading;
+    while (node && node !== nextHeading) {
+      const next = node.nextSibling;
+      section.append(node);
+      node = next;
+    }
+    const item = document.createElement('li');
+    const link = document.createElement('a');
+    link.href = '#' + heading.id;
+    link.textContent = heading.textContent;
+    item.append(link);
+    links.append(item);
+    body.append(section);
+  });
+}
+
 function table(host, headers, rows) {
   const element = document.createElement('table');
   const head = element.createTHead().insertRow();
@@ -28,7 +69,11 @@ function table(host, headers, rows) {
   const body = element.createTBody();
   rows.forEach(values => {
     const row = body.insertRow();
-    values.forEach(value => { row.insertCell().textContent = value; });
+    const label = document.createElement('th');
+    label.scope = 'row';
+    label.textContent = values[0];
+    row.append(label);
+    values.slice(1).forEach(value => { row.insertCell().textContent = value; });
   });
   host.replaceChildren(element);
 }
@@ -45,8 +90,10 @@ function metricGrid(name, values, limits) {
     if (sense) {
       const margin = sense === 'max' ? limits[key] - values[key] : values[key] - limits[key];
       const passed = margin >= -1e-8 * limits[key];
-      value.className = passed ? 'pass' : 'fail';
-      value.append(passed ? ' · Pass' : ' · Fail');
+      const status = document.createElement('span');
+      status.className = 'metric-status ' + (passed ? 'pass' : 'fail');
+      status.textContent = passed ? 'Pass' : 'Fail';
+      value.append(status);
     }
     item.append(term, value);
     list.append(item);
@@ -55,7 +102,7 @@ function metricGrid(name, values, limits) {
 }
 
 function plot(canvas, curves, axes) {
-  const colors = ['#28735e', '#374b89', '#a35427', '#9a326a', '#456931', '#745190', '#526760'];
+  const colors = ['#17666a', '#374b89', '#a35427', '#9a326a', '#456931', '#745190', '#526760'];
   const points = curves.flatMap(curve => curve.points);
   const xs = points.map(([x]) => axes.log ? Math.log10(x) : x);
   const ys = points.map(([, y]) => axes.log ? Math.log10(Math.max(1e-16, y)) : y);
@@ -64,32 +111,43 @@ function plot(canvas, curves, axes) {
   const minY = axes.log ? Math.floor(Math.min(...ys)) : Math.floor(Math.min(...ys) / 500) * 500;
   const maxY = axes.log ? Math.ceil(Math.max(...ys)) : Math.ceil(Math.max(...ys) / 500) * 500;
 
-  function draw() {
-    const ctx = canvas.getContext('2d');
-    const { width, height } = canvas.getBoundingClientRect();
-    const ratio = Math.min(2, window.devicePixelRatio);
-    canvas.width = Math.round(width * ratio);
-    canvas.height = Math.round(height * ratio);
-    ctx.scale(ratio, ratio);
-    const box = { left: 61, right: width - 17, top: 17, bottom: height - 77 };
+  const legend = document.createElement('div');
+  legend.className = 'chart-legend';
+  curves.forEach((curve, index) => {
+    const key = document.createElement('span');
+    key.className = curve.reference ? 'chart-key reference' : 'chart-key';
+    key.style.setProperty('--series-color', colors[index]);
+    const swatch = document.createElement('i');
+    swatch.setAttribute('aria-hidden', 'true');
+    key.append(swatch, curve.label);
+    legend.append(key);
+  });
+  canvas.after(legend);
+
+  drawResponsive(canvas, (ctx, width, height) => {
+    const box = { left: 63, right: width - 17, top: 19, bottom: height - 46 };
     const mapX = (x) => box.left + (box.right - box.left) * (x - minX) / (maxX - minX);
     const mapY = (y) => box.bottom - (box.bottom - box.top) * (y - minY) / (maxY - minY);
     ctx.font = '11px Segoe UI, sans-serif';
     ctx.fillStyle = '#455d53';
     ctx.strokeStyle = '#dde8e2';
-    const tickCount = 6;
-    for (let tick = 0; tick <= tickCount; tick += 1) {
-      const y = minY + (maxY - minY) * tick / tickCount;
+    const ticks = (minimum, maximum) => {
+      const step = axes.log ? Math.max(1, Math.ceil((maximum - minimum) / 6)) : (maximum - minimum) / 5;
+      return Array.from({ length: Math.floor((maximum - minimum) / step + 1e-9) + 1 },
+        (_, index) => minimum + index * step);
+    };
+    for (const y of ticks(minY, maxY)) {
       const pixel = mapY(y);
       ctx.beginPath();
       ctx.moveTo(box.left, pixel);
       ctx.lineTo(box.right, pixel);
       ctx.stroke();
       ctx.textAlign = 'right';
-      ctx.fillText(axes.log ? '1e' + y.toFixed(1) : number(y, 0), box.left - 7, pixel + 4);
-      const x = minX + (maxX - minX) * tick / tickCount;
+      ctx.fillText(axes.log ? '1e' + y : number(y, 0), box.left - 7, pixel + 4);
+    }
+    for (const x of ticks(minX, maxX)) {
       ctx.textAlign = 'center';
-      ctx.fillText(axes.log ? '1e' + x.toFixed(1) : number(x, 0), mapX(x), box.bottom + 15);
+      ctx.fillText(axes.log ? '1e' + x : number(x, 0), mapX(x), box.bottom + 15);
     }
     ctx.fillText(axes.x, (box.left + box.right) / 2, box.bottom + 31);
     ctx.save();
@@ -112,15 +170,15 @@ function plot(canvas, curves, axes) {
       });
       ctx.stroke();
       ctx.setLineDash([]);
-      const columns = width < 520 ? 3 : 4;
-      const legendX = 15 + (width - 22) / columns * (index % columns);
-      const legendY = box.bottom + 46 + 13 * Math.floor(index / columns);
-      ctx.textAlign = 'left';
-      ctx.fillRect(legendX, legendY - 6, 9, 2);
-      ctx.fillText(curve.label, legendX + 13, legendY - 2);
+      if (axes.log && !curve.reference) {
+        curve.points.forEach(([x, y]) => {
+          ctx.beginPath();
+          ctx.arc(mapX(Math.log10(x)), mapY(Math.log10(Math.max(1e-16, y))), 2, 0, 2 * Math.PI);
+          ctx.fill();
+        });
+      }
     });
-  }
-  new ResizeObserver(draw).observe(canvas);
+  });
 }
 
 function populate(results) {
@@ -142,6 +200,7 @@ function populate(results) {
   document.querySelectorAll('[data-value]').forEach(node => { node.textContent = summary[node.dataset.value]; });
   metricGrid('initial', baseline, limits);
   metricGrid('optimized', final, limits);
+  renderEngineeringFigures(results);
 
   table(id('verification-table'), ['Test', 'Quantity', 'FE result', 'Reference', 'Relative error'],
     verification.map(row => [row.test, row.quantity, significant(row.computed) + ' ' + row.units,
@@ -192,8 +251,12 @@ function populate(results) {
   }
   table(id('kkt-table'), ['Active limit', 'Local mass sensitivity'], groups);
 
+  const radiiWithoutR5 = results.without_buckling.radii_m;
+  const maxRadiusDifference = Math.max(...optimized.radii_m.map((radius, index) =>
+    1000 * Math.abs(radius - radiiWithoutR5[index])));
   id('buckling-summary').textContent = 'R5 is inactive at the optimized design. Removing it changed mass by ' +
-    withUnit(Math.abs(noR5.mass_kg - final.mass_kg), 3, 'kg') + ' and gave a buckling factor of ' +
+    withUnit(Math.abs(noR5.mass_kg - final.mass_kg), 3, 'kg') + '. The largest individual radius change was ' +
+    withUnit(maxRadiusDifference, 2, 'mm') + '. The run without R5 gave a buckling factor of ' +
     number(noR5.buckling_factor, 3) + ', above the required 3.0. The selected design retains a factor of ' +
     number(refined.buckling_factor, 3) + ' after mesh refinement.';
   table(id('results-table'), ['Metric', 'Limit', 'Initial', 'Optimized', 'Without R5', 'Refined'],
@@ -204,6 +267,7 @@ function populate(results) {
 
 async function main() {
   const status = id('viewer-status');
+  organizeReport();
   try {
     const response = await fetch(new URL('./results.json', import.meta.url));
     if (!response.ok) throw new Error('Unable to load results (' + response.status + ').');
